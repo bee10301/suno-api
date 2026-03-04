@@ -971,31 +971,61 @@ class SunoApi {
     // Find and fill the textarea - try multiple selectors
     logger.info('Looking for song description textarea...');
     let textarea;
-    try {
-      // Try original selector first
-      textarea = page.locator('textarea[placeholder*="Hip-hop"]');
-      await textarea.waitFor({ state: 'visible', timeout: SunoApi.TIMEOUTS.TEXTAREA_WAIT });
-      logger.info('Found textarea with Hip-hop placeholder');
-    } catch(e) {
-      logger.info('Hip-hop placeholder not found, trying alternative selectors...');
-      // Try finding any visible textarea on the page
+
+    const textareaSelectors = [
+      'textarea.w-full.resize-none.border-none.bg-transparent',
+      'textarea.w-full.resize-none[style*="height"]',
+      'textarea[style*="height: 100%"]'
+    ];
+
+    for (const selector of textareaSelectors) {
+      try {
+        textarea = page.locator(selector);
+        await textarea.waitFor({ state: 'visible', timeout: 2000 });
+        logger.info(`Found textarea with selector: ${selector}`);
+        break;
+      } catch (e) {
+        logger.info(`Selector "${selector}" not found, trying next...`);
+        textarea = null;
+      }
+    }
+
+    if (!textarea) {
+      logger.info('Primary selectors failed, trying fallback: finding visible textarea with height:100%...');
       const textareas = page.locator('textarea');
       const count = await textareas.count();
       logger.info(`Found ${count} textareas on page`);
 
-      // Usually the song description textarea is the first or second one
+      for (let i = 0; i < count; i++) {
+        const ta = textareas.nth(i);
+        if (await ta.isVisible()) {
+          const style = await ta.getAttribute('style');
+          if (style?.includes('height: 100%')) {
+            textarea = ta;
+            logger.info(`Found textarea at index ${i} with height:100%`);
+            break;
+          }
+        }
+      }
+    }
+
+    if (!textarea) {
+      logger.info('height:100% textarea not found, using first visible textarea...');
+      const textareas = page.locator('textarea');
+      const count = await textareas.count();
+
       for (let i = 0; i < count; i++) {
         const ta = textareas.nth(i);
         if (await ta.isVisible()) {
           textarea = ta;
-          logger.info(`Using textarea at index ${i}`);
+          logger.info(`Using first visible textarea at index ${i}`);
           break;
         }
       }
+    }
 
-      if (!textarea) {
-        throw new Error('Could not find any visible textarea on the page');
-      }
+    if (!textarea) {
+      throw new Error('Could not find any visible textarea on the page');
     }
 
     logger.info('Filling textarea with test prompt...');
